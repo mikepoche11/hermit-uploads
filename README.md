@@ -30,4 +30,4 @@ Options: `VIDEOS_PER_HERMIT=5`, `INCLUDE_SHORTS=1`.
 
 ## Fixing a Hermit that shows "Couldn't load videos"
 
-The build log prints a ✓ or ✗ per Hermit. A ✗ usually means the handle in `hermits.json` is wrong. Find the right one on their YouTube channel (the `@name` in the URL) and update `handles`, or add `"channelId": "UC..."` to skip the lookup entirely.
+The build log prints a ✓ or ✗ per Hermit. A ✗ usually means the handle in `hermits.json` is wrong. Find the right one on their YouTube channel (the `@name` in the URL) and update `handles` (a legacy link like `youtube.com/somename` goes in as `"/somename"`), or add `"channelId": "UC..."` to skip the lookup entirely.

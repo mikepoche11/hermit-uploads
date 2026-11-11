@@ -86,6 +86,11 @@ export function parseChannelPage(html) {
   return { id, avatar };
 }
 
+// A handle is "@name" style by default; one starting with "/" is a legacy channel path
+// such as "/mcskizzleman" or "/c/name" (youtube.com/<path>).
+const channelPageUrl = (handle) =>
+  handle.startsWith("/") ? `https://www.youtube.com${handle}` : `https://www.youtube.com/@${handle}`;
+
 const norm = (s = "") => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 // Channel IDs to try for a Hermit, best guess first: a pinned channelId, then each
@@ -97,7 +102,7 @@ async function* channelCandidates(hermit, previous, diag) {
     const c = { id: hermit.channelId, handle: hermit.handles[0], avatar: null, source: "pinned" };
     for (const handle of hermit.handles.slice(0, 1)) {
       try {
-        const res = await get(`https://www.youtube.com/@${handle}`, { tries: 2 });
+        const res = await get(channelPageUrl(handle), { tries: 2 });
         const page = res.ok ? parseChannelPage(await res.text()) : {};
         if (page.id === c.id) c.avatar = page.avatar;
       } catch {}
@@ -106,7 +111,7 @@ async function* channelCandidates(hermit, previous, diag) {
   }
   for (const handle of hermit.handles) {
     try {
-      const res = await get(`https://www.youtube.com/@${handle}`, { tries: 3 });
+      const res = await get(channelPageUrl(handle), { tries: 3 });
       if (!res.ok) { diag.push(`@${handle}:${res.status}`); continue; }
       const page = parseChannelPage(await res.text());
       if (!page.id) { diag.push(`@${handle}:no-id`); continue; }
@@ -166,7 +171,7 @@ async function buildHermit(hermit, previous) {
     name: hermit.name,
     handle: ch.handle,
     channelId: ch.id,
-    channelUrl: `https://www.youtube.com/@${ch.handle}`,
+    channelUrl: channelPageUrl(ch.handle),
     avatar: ch.avatar || (previous?.channelId === ch.id ? previous.avatar : null),
     source: ch.source,
     diag: diag.join(" "),
@@ -258,7 +263,7 @@ export async function main() {
       const e = first;
       failures++;
       console.warn(`✗ ${h.name.padEnd(18)} ${e.message}${prev ? "  (kept previous data)" : ""}`);
-      return prev ? { ...prev, stale: true } : { name: h.name, handle: h.handles[0], channelUrl: `https://www.youtube.com/@${h.handles[0]}`, videos: [], error: true };
+      return prev ? { ...prev, stale: true } : { name: h.name, handle: h.handles[0], channelUrl: channelPageUrl(h.handles[0]), videos: [], error: true };
     }
   });
 
