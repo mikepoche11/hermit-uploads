@@ -45,7 +45,6 @@
     {"name": "Generikb", "channelId": "UCJTWU5K7kl9EE109HBeoldA"},
     {"name": "Stressmonster101", "channelId": "UC24lkOxZYna9nlXYBcJ9B8Q"},
     {"name": "TrixyBlox", "channelId": "UC4UNqGYuB2q49GzGD_CBIVQ"},
-    {"name": "Hayls World", "channelId": "UCIxLxlan8q9WA7sjuq6LdTQ"},
     {"name": "ilmango", "channelId": "UCHSI8erNrN6hs3sUK6oONLA"},
     {"name": "InTheLittleWood aka Martyn", "channelId": "UCTSu4x8ahsJ16T9fWiwlKdg"},
     {"name": "LDShadowLady", "channelId": "UCzTlXb7ivVzuFlugVCv3Kvg"},
@@ -208,6 +207,7 @@
     {"name": "vlogbrothers", "channelId": "UCGaVdbSav8xWuFWTadK6loA"}
   ]},
   {"id": "tech", "name": "Tech", "accent": "#4f46e5", "channels": [
+    {"name": "Hayls World", "channelId": "UCIxLxlan8q9WA7sjuq6LdTQ"},
     {"name": "9to5Google", "channelId": "UCzIO0iX4yKW2P4NkmmKq1PA"},
     {"name": "9to5Mac", "channelId": "UChjRM_qQAaOAiLNbOGbYcRA"},
     {"name": "Austin Evans", "channelId": "UCXGgrKt94gR6lmN4aN3mYTg"},

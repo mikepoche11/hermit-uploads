@@ -55,10 +55,14 @@
   }
 
   function renderNav(active) {
-    nav.innerHTML = `<a href="#" class="pill${active ? "" : " on"}">All</a>` +
-      index.categories.map((c) => `<a href="#${esc(c.id)}" class="pill${c.id === active ? " on" : ""}" style="--c:${esc(c.accent)}">${esc(c.name)}</a>`).join("");
-    const on = $(".pill.on", nav);
-    if (on) on.scrollIntoView({ block: "nearest", inline: "center" });
+    const total = index.categories.reduce((n, c) => n + c.count, 0);
+    const item = (href, name, count, color, on) =>
+      `<a href="${href}" class="navlink${on ? " on" : ""}" style="--c:${esc(color)}"${on ? ' aria-current="page"' : ""}><span class="dot" aria-hidden="true"></span><span class="nm">${esc(name)}</span><span class="n">${count}</span></a>`;
+    nav.innerHTML = item("#", "Everything", total, "#28a65b", !active) +
+      index.categories.map((c) => item("#" + esc(c.id), c.name, c.count, c.accent, c.id === active)).join("");
+    const on = $(".navlink.on", nav);
+    // On phones the list is a horizontal strip: keep the current category in view.
+    if (on && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = on.offsetLeft - 16;
   }
 
   function setAccent(cat) {
