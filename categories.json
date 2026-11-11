@@ -114,7 +114,6 @@
   ]},
   {"id": "restoration-and-repair", "name": "Restoration & Repair", "accent": "#8b5e34", "channels": [
     {"name": "Cool Again Restoration", "channelId": "UCf3GDC-HtLKyr2NRgCzyzmw"},
-    {"name": "Dad, how do I?", "channelId": "UCNepEAWZH0TBu7dkxIbluDw"},
     {"name": "Hand Tool Rescue", "channelId": "UCasG9kJWi1eVxM0QkyqKVJQ"},
     {"name": "Rebuilt & Restored", "channelId": "UCip1Vr1X79WL0x-SJJ2383g"},
     {"name": "Rescue & Restore", "channelId": "UChzhFNSV-OuHQiYpwDMImsw"}
@@ -376,6 +375,7 @@
     {"name": "Real Civil Engineer", "channelId": "UCeP4Yv3s4RvS0-6d9OInRMw"}
   ]},
   {"id": "random-uncategorized", "name": "Random Uncategorized", "accent": "#64748b", "channels": [
+    {"name": "Dad, how do I?", "channelId": "UCNepEAWZH0TBu7dkxIbluDw"},
     {"name": "UncleJhonn", "channelId": "UCclxm0FKyggKZhP5TWj8Wtg"},
     {"name": "Chase Poche", "channelId": "UCM0RV6E0s4BsR8ZkH74U2Aw"},
     {"name": "Nick Glassett", "channelId": "UC6bFZ6yU6VJ3WW0hFt-iAcw"},
