@@ -86,24 +86,53 @@ export function parseChannelPage(html) {
   return { id, avatar };
 }
 
-async function resolveChannel(hermit, previous) {
-  let found = { id: hermit.channelId || null, avatar: null, handle: hermit.handles[0] };
+const norm = (s = "") => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// Channel IDs to try for a Hermit, best guess first: a pinned channelId, then each
+// handle in hermits.json, then a YouTube channel search for their exact name.
+async function* channelCandidates(hermit, previous, diag) {
+  const seen = new Set();
+  const fresh = (c) => c.id && !seen.has(c.id) && seen.add(c.id);
+  if (hermit.channelId) {
+    const c = { id: hermit.channelId, handle: hermit.handles[0], avatar: null, source: "pinned" };
+    for (const handle of hermit.handles.slice(0, 1)) {
+      try {
+        const res = await get(`https://www.youtube.com/@${handle}`, { tries: 2 });
+        const page = res.ok ? parseChannelPage(await res.text()) : {};
+        if (page.id === c.id) c.avatar = page.avatar;
+      } catch {}
+    }
+    if (fresh(c)) yield c;
+  }
   for (const handle of hermit.handles) {
     try {
       const res = await get(`https://www.youtube.com/@${handle}`, { tries: 3 });
-      if (!res.ok) continue;
+      if (!res.ok) { diag.push(`@${handle}:${res.status}`); continue; }
       const page = parseChannelPage(await res.text());
-      if (page.id && (!found.id || found.id === page.id)) {
-        found = { id: page.id, avatar: page.avatar, handle };
-        break;
-      }
-    } catch {
-      /* try next handle */
+      if (!page.id) { diag.push(`@${handle}:no-id`); continue; }
+      const c = { ...page, handle, source: `@${handle}` };
+      if (fresh(c)) yield c;
+    } catch (e) {
+      diag.push(`@${handle}:${e.message}`);
     }
   }
-  if (!found.id && previous?.channelId) found.id = previous.channelId;
-  if (!found.avatar && previous?.avatar) found.avatar = previous.avatar;
-  return found;
+  try {
+    const res = await get(`https://www.youtube.com/results?search_query=${encodeURIComponent(hermit.name)}&sp=EgIQAg%253D%253D`, { tries: 2 });
+    const html = res.ok ? await res.text() : "";
+    const hits = [...html.matchAll(/"channelRenderer":\{"channelId":"(UC[\w-]{22})","title":\{"simpleText":"([^"]+)"[\s\S]{0,4000}?"canonicalBaseUrl":"\/@([^"]+)"/g)];
+    diag.push(`search:${res.status}/${hits.length}`);
+    for (const [, id, title, handle] of hits) {
+      if (norm(title) !== norm(hermit.name) && norm(handle) !== norm(hermit.name)) continue;
+      const c = { id, handle: decodeURIComponent(handle), avatar: null, source: "search" };
+      if (fresh(c)) yield c;
+    }
+  } catch (e) {
+    diag.push(`search:${e.message}`);
+  }
+  if (previous?.channelId) {
+    const c = { id: previous.channelId, handle: previous.handle, avatar: previous.avatar, source: "previous" };
+    if (fresh(c)) yield c;
+  }
 }
 
 async function isShort(videoId) {
@@ -116,19 +145,32 @@ async function isShort(videoId) {
 }
 
 async function buildHermit(hermit, previous) {
-  const ch = await resolveChannel(hermit, previous);
+  const diag = [];
+  let best = null;
+  for await (const c of channelCandidates(hermit, previous, diag)) {
+    try {
+      const res = await get(`https://www.youtube.com/feeds/videos.xml?channel_id=${c.id}`);
+      if (!res.ok) { diag.push(`feed ${c.id}:${res.status}`); continue; }
+      const { entries } = parseFeed(await res.text());
+      diag.push(`${c.source}→${c.id}:${entries.length}`);
+      if (!best || entries.length > best.entries.length) best = { ch: c, entries };
+      // A real Hermit channel has a full feed; a near-empty one is usually the wrong channel.
+      if (entries.length >= 3) break;
+    } catch (e) {
+      diag.push(`feed ${c.id}:${e.message}`);
+    }
+  }
+  if (!best || !best.entries.length) throw new Error(`no videos found [${diag.join(" ")}]`);
+  const { ch, entries } = best;
   const base = {
     name: hermit.name,
     handle: ch.handle,
     channelId: ch.id,
     channelUrl: `https://www.youtube.com/@${ch.handle}`,
-    avatar: ch.avatar,
+    avatar: ch.avatar || (previous?.channelId === ch.id ? previous.avatar : null),
+    source: ch.source,
+    diag: diag.join(" "),
   };
-  if (!ch.id) throw new Error(`could not resolve channel for ${hermit.name} (tried @${hermit.handles.join(", @")})`);
-
-  const res = await get(`https://www.youtube.com/feeds/videos.xml?channel_id=${ch.id}`);
-  if (!res.ok) throw new Error(`feed ${res.status} for ${hermit.name}`);
-  const { entries } = parseFeed(await res.text());
 
   const toVideo = (e, short) => ({
     id: e.id,
@@ -199,7 +241,8 @@ export async function main() {
   let failures = 0;
   const attempt = async (h) => {
     const r = await buildHermit(h, prevByName.get(h.name));
-    console.log(`✓ ${h.name.padEnd(18)} @${r.handle} ${r.channelId}  ${r.videos.length} videos (feed ${r.feedEntries}, shorts ${r.shortsSkipped})`);
+    console.log(`✓ ${h.name.padEnd(18)} @${r.handle} ${r.channelId}  ${r.videos.length} videos (feed ${r.feedEntries}, shorts ${r.shortsSkipped})  [${r.diag}]`);
+    delete r.diag;
     return r;
   };
   const results = await pool(hermits, 3, async (h) => {
