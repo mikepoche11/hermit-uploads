@@ -31,7 +31,7 @@ async function get(url, { tries = 3, ...opts } = {}) {
         headers: { "user-agent": UA, "accept-language": "en-US,en;q=0.9", cookie: "CONSENT=YES+1", ...(opts.headers || {}) },
       });
       // YouTube's feed endpoint occasionally 404s/500s for a valid channel; retry those.
-      if (res.status >= 500 || (res.status === 404 && url.includes("/feeds/"))) {
+      if (res.status >= 500 || res.status === 429 || (res.status === 404 && url.includes("/feeds/"))) {
         lastErr = new Error(`${res.status} for ${url}`);
       } else {
         return res;
@@ -90,7 +90,7 @@ async function resolveChannel(hermit, previous) {
   let found = { id: hermit.channelId || null, avatar: null, handle: hermit.handles[0] };
   for (const handle of hermit.handles) {
     try {
-      const res = await get(`https://www.youtube.com/@${handle}`, { tries: 2 });
+      const res = await get(`https://www.youtube.com/@${handle}`, { tries: 3 });
       if (!res.ok) continue;
       const page = parseChannelPage(await res.text());
       if (page.id && (!found.id || found.id === page.id)) {
@@ -130,19 +130,34 @@ async function buildHermit(hermit, previous) {
   if (!res.ok) throw new Error(`feed ${res.status} for ${hermit.name}`);
   const { entries } = parseFeed(await res.text());
 
+  const toVideo = (e, short) => ({
+    id: e.id,
+    title: e.title,
+    published: e.published,
+    views: e.views,
+    short,
+    url: short ? `https://www.youtube.com/shorts/${e.id}` : `https://www.youtube.com/watch?v=${e.id}`,
+    thumb: `https://i.ytimg.com/vi/${e.id}/hqdefault.jpg`,
+  });
   const videos = [];
+  const shorts = [];
   for (const e of entries) {
     if (videos.length >= PER_HERMIT) break;
-    if (!INCLUDE_SHORTS && (await isShort(e.id))) continue;
-    videos.push({
-      id: e.id,
-      title: e.title,
-      published: e.published,
-      views: e.views,
-      url: `https://www.youtube.com/watch?v=${e.id}`,
-      thumb: `https://i.ytimg.com/vi/${e.id}/hqdefault.jpg`,
-    });
+    if (!INCLUDE_SHORTS && (await isShort(e.id))) {
+      shorts.push(e);
+      continue;
+    }
+    videos.push(toVideo(e, false));
   }
+  // If a Hermit has mostly been posting Shorts lately, fill the empty slots with them
+  // rather than showing a half-empty card.
+  for (const e of shorts) {
+    if (videos.length >= PER_HERMIT) break;
+    videos.push(toVideo(e, true));
+  }
+  videos.sort((a, b) => new Date(b.published) - new Date(a.published));
+  base.feedEntries = entries.length;
+  base.shortsSkipped = shorts.length;
   return { ...base, videos };
 }
 
@@ -182,13 +197,22 @@ export async function main() {
   const prevByName = new Map((previous?.hermits || []).map((h) => [h.name, h]));
 
   let failures = 0;
-  const results = await pool(hermits, 4, async (h) => {
+  const attempt = async (h) => {
+    const r = await buildHermit(h, prevByName.get(h.name));
+    console.log(`✓ ${h.name.padEnd(18)} @${r.handle} ${r.channelId}  ${r.videos.length} videos (feed ${r.feedEntries}, shorts ${r.shortsSkipped})`);
+    return r;
+  };
+  const results = await pool(hermits, 3, async (h) => {
     const prev = prevByName.get(h.name);
     try {
-      const r = await buildHermit(h, prev);
-      console.log(`✓ ${h.name.padEnd(18)} @${r.handle}  ${r.videos.length} videos`);
-      return r;
-    } catch (e) {
+      return await attempt(h);
+    } catch (first) {
+      // One slower retry, after the rest of the pool has had a go.
+      await sleep(4000);
+      try {
+        return await attempt(h);
+      } catch {}
+      const e = first;
       failures++;
       console.warn(`✗ ${h.name.padEnd(18)} ${e.message}${prev ? "  (kept previous data)" : ""}`);
       return prev ? { ...prev, stale: true } : { name: h.name, handle: h.handles[0], channelUrl: `https://www.youtube.com/@${h.handles[0]}`, videos: [], error: true };

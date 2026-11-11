@@ -123,6 +123,8 @@ a:hover .thumb::after, a:focus-visible .thumb::after { opacity: 1; transform: sc
   background: var(--new); color: #fff; padding: 2px 7px 3px; box-shadow: 2px 2px 0 #0006;
 }
 
+.badge.short { background: #3a3f8f; }
+
 /* Grid of Hermits */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 20px; }
 .card {

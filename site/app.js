@@ -30,7 +30,8 @@
   }
 
   function thumb(v, eager) {
-    return `<div class="thumb">${isNew(v.published) ? '<span class="badge">NEW</span>' : ""}
+    const badge = isNew(v.published) ? '<span class="badge">NEW</span>' : v.short ? '<span class="badge short">SHORT</span>' : "";
+    return `<div class="thumb">${badge}
       <img src="${esc(v.thumb)}" alt="" ${eager ? "" : 'loading="lazy"'} referrerpolicy="no-referrer"
         onerror="if(!this.dataset.f){this.dataset.f=1;this.src='https://i.ytimg.com/vi/${esc(v.id)}/mqdefault.jpg'}" /></div>`;
   }
