@@ -29,6 +29,8 @@ jobs:
           # Last deploy: fallback for failed feeds, plus cached avatars and Shorts checks
           PREVIOUS_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
         run: node scripts/build.mjs
+      - name: Make browsers load the new styles and script after each change
+        run: sed -i -E "s/(app\.js|style\.css)\"/\1?v=${GITHUB_SHA::7}\"/g" site/index.html && grep -E 'app\.js|style\.css' site/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
