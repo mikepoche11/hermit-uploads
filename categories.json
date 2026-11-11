@@ -52,7 +52,7 @@
     {"name": "Shubble", "channelId": "UCg-HvGLsfJ-7P_f9kUuWuiQ"},
     {"name": "Solidarity", "channelId": "UC6XAct-Bus4x3mYz3VC_HUw"}
   ]},
-  {"id": "rc-and-drones", "name": "RC & drones", "accent": "#e0622c", "channels": [
+  {"id": "rc-and-drones", "name": "RC's", "accent": "#e0622c", "channels": [
     {"name": "Adventure Time RC", "channelId": "UC7qNtoMDLGLMta8DIi2ju0g"},
     {"name": "Big ‘Merica RC", "channelId": "UC8jDvWyQ27INnRYb7bwOcHQ"},
     {"name": "Cape Crawlers", "channelId": "UCcS-zhK_qTz0Ua1EU73vZJg"},
