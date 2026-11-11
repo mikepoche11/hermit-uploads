@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hermit Uploads</title>
+  <meta name="description" content="An unofficial fan page showing the latest YouTube videos from every Hermitcraft member." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2328a65b'/%3E%3Crect y='10' width='16' height='6' fill='%23845a32'/%3E%3Crect x='3' y='12' width='2' height='2' fill='%236b4526'/%3E%3Crect x='10' y='13' width='2' height='2' fill='%236b4526'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-inner">
+      <div class="brand">
+        <span class="block" aria-hidden="true"></span>
+        <div>
+          <h1>Hermit Uploads</h1>
+          <p class="sub">The newest videos from every Hermitcraft member, all in one place.</p>
+        </div>
+      </div>
+      <div class="controls">
+        <label class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="q" type="search" placeholder="Find a Hermit…" autocomplete="off" aria-label="Filter Hermits by name" />
+        </label>
+        <div class="seg" role="group" aria-label="Sort Hermits">
+          <button data-sort="recent" aria-pressed="true">Newest</button>
+          <button data-sort="az" aria-pressed="false">A–Z</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="fresh" aria-labelledby="fresh-h">
+      <div class="section-head">
+        <h2 id="fresh-h">Fresh off the server</h2>
+        <span id="updated" class="muted"></span>
+      </div>
+      <div id="fresh" class="fresh-row"></div>
+    </section>
+
+    <section aria-labelledby="all-h">
+      <div class="section-head">
+        <h2 id="all-h">All Hermits</h2>
+        <span id="count" class="muted"></span>
+      </div>
+      <div id="grid" class="grid" aria-live="polite"></div>
+      <p id="empty" class="empty" hidden>No Hermit matches that name.</p>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    Unofficial fan page. Not affiliated with Hermitcraft or YouTube. Videos and thumbnails belong to their creators; every link opens on YouTube.
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
