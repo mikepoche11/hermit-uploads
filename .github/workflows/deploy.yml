@@ -26,8 +26,8 @@ jobs:
           node-version: 22
       - name: Fetch latest videos
         env:
-          # Falls back to the last deployed list for any Hermit whose feed fails this run
-          PREVIOUS_DATA_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data.json
+          # Last deploy: fallback for failed feeds, plus cached avatars and Shorts checks
+          PREVIOUS_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
         run: node scripts/build.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

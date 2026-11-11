@@ -1,21 +1,24 @@
 #!/usr/bin/env node
-// Fetches each Hermit's latest YouTube uploads from YouTube's public RSS feeds
-// (no API key needed) and writes site/data.json for the static page to render.
+// Fetches every channel's latest YouTube uploads from YouTube's public RSS feeds
+// (no API key needed) and writes one data file per category for the static site:
+//   site/data/index.json      category list + newest videos across everything
+//   site/data/<category>.json channels and their latest videos
 //
 //   node scripts/build.mjs
 //
 // Env vars (all optional):
-//   VIDEOS_PER_HERMIT   how many videos to keep per Hermit (default 3)
+//   VIDEOS_PER_CHANNEL  how many videos to keep per channel (default 3)
 //   INCLUDE_SHORTS      "1" to keep YouTube Shorts (default: skip them)
-//   PREVIOUS_DATA_URL   URL of the currently deployed data.json; used as a
-//                       fallback for any Hermit whose feed fails this run
+//   PREVIOUS_BASE_URL   URL of the currently deployed site; its data files are a
+//                       fallback for any channel whose feed fails this run, and a
+//                       cache for avatars and Shorts checks
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PER_HERMIT = Number(process.env.VIDEOS_PER_HERMIT || 3);
+const PER_CHANNEL = Number(process.env.VIDEOS_PER_CHANNEL || process.env.VIDEOS_PER_CHANNEL || 3);
 const INCLUDE_SHORTS = process.env.INCLUDE_SHORTS === "1";
 const UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -93,14 +96,15 @@ const channelPageUrl = (handle) =>
 
 const norm = (s = "") => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-// Channel IDs to try for a Hermit, best guess first: a pinned channelId, then each
-// handle in hermits.json, then a YouTube channel search for their exact name.
+// Channel IDs to try for a channel, best guess first: a pinned channelId, then each
+// handle in categories.json, then a YouTube channel search for their exact name.
 async function* channelCandidates(hermit, previous, diag) {
   const seen = new Set();
   const fresh = (c) => c.id && !seen.has(c.id) && seen.add(c.id);
   if (hermit.channelId) {
     const c = { id: hermit.channelId, handle: hermit.handles[0], avatar: null, source: "pinned" };
-    for (const handle of hermit.handles.slice(0, 1)) {
+    if (previous?.channelId === c.id && previous.avatar) c.avatar = previous.avatar;
+    for (const handle of c.avatar ? [] : hermit.handles.slice(0, 1)) {
       try {
         const res = await get(channelPageUrl(handle), { tries: 2 });
         const page = res.ok ? parseChannelPage(await res.text()) : {};
@@ -108,6 +112,8 @@ async function* channelCandidates(hermit, previous, diag) {
       } catch {}
     }
     if (fresh(c)) yield c;
+    // Channels taken straight from a subscription list are exact: never guess another.
+    if (hermit.pinnedOnly) return;
   }
   for (const handle of hermit.handles) {
     try {
@@ -186,11 +192,16 @@ async function buildHermit(hermit, previous) {
     url: short ? `https://www.youtube.com/shorts/${e.id}` : `https://www.youtube.com/watch?v=${e.id}`,
     thumb: `https://i.ytimg.com/vi/${e.id}/hqdefault.jpg`,
   });
+  // Shorts checks are cached between runs: known Shorts and known regular videos
+  // from the last deploy skip the network check.
+  const knownShorts = new Set(previous?.shortIds || []);
+  const knownLong = new Set((previous?.videos || []).filter((v) => !v.short).map((v) => v.id));
+  const shortCheck = async (id) => (knownShorts.has(id) ? true : knownLong.has(id) ? false : isShort(id));
   const videos = [];
   const shorts = [];
   for (const e of entries) {
-    if (videos.length >= PER_HERMIT) break;
-    if (!INCLUDE_SHORTS && (await isShort(e.id))) {
+    if (videos.length >= PER_CHANNEL) break;
+    if (!INCLUDE_SHORTS && (await shortCheck(e.id))) {
       shorts.push(e);
       continue;
     }
@@ -199,12 +210,13 @@ async function buildHermit(hermit, previous) {
   // If a Hermit has mostly been posting Shorts lately, fill the empty slots with them
   // rather than showing a half-empty card.
   for (const e of shorts) {
-    if (videos.length >= PER_HERMIT) break;
+    if (videos.length >= PER_CHANNEL) break;
     videos.push(toVideo(e, true));
   }
   videos.sort((a, b) => new Date(b.published) - new Date(a.published));
   base.feedEntries = entries.length;
   base.shortsSkipped = shorts.length;
+  base.shortIds = shorts.map((e) => e.id);
   return { ...base, videos };
 }
 
@@ -222,55 +234,84 @@ async function pool(items, limit, fn) {
   return out;
 }
 
-async function loadPrevious() {
-  const sources = [];
-  if (process.env.PREVIOUS_DATA_URL) sources.push(process.env.PREVIOUS_DATA_URL);
-  for (const src of sources) {
+async function loadJson(url, file) {
+  if (url) {
     try {
-      const res = await fetch(src, { headers: { "cache-control": "no-cache" } });
+      const res = await fetch(url, { headers: { "cache-control": "no-cache" } });
       if (res.ok) return await res.json();
     } catch {}
   }
   try {
-    return JSON.parse(await readFile(path.join(ROOT, "site", "data.json"), "utf8"));
+    return JSON.parse(await readFile(file, "utf8"));
   } catch {
     return null;
   }
 }
 
+const DATA_DIR = path.join(ROOT, "site", "data");
+
 export async function main() {
-  const hermits = JSON.parse(await readFile(path.join(ROOT, "hermits.json"), "utf8"));
-  const previous = await loadPrevious();
-  const prevByName = new Map((previous?.hermits || []).map((h) => [h.name, h]));
+  const categories = JSON.parse(await readFile(path.join(ROOT, "categories.json"), "utf8"));
+  const base = (process.env.PREVIOUS_BASE_URL || "").replace(/\/?$/, "/");
+
+  // Last deploy's data, keyed by channel id, for fallbacks and caches.
+  const prevById = new Map();
+  await pool(categories, 6, async (cat) => {
+    const prev = await loadJson(process.env.PREVIOUS_BASE_URL ? `${base}data/${cat.id}.json` : null, path.join(DATA_DIR, `${cat.id}.json`));
+    for (const ch of prev?.channels || []) if (ch.channelId) prevById.set(ch.channelId, ch);
+  });
+
+  const jobs = categories.flatMap((cat) =>
+    cat.channels.map((ch) => ({
+      cat: cat.id,
+      ch: ch.handles?.length ? ch : { ...ch, handles: [`/channel/${ch.channelId}`], pinnedOnly: true },
+    })),
+  );
 
   let failures = 0;
-  const attempt = async (h) => {
-    const r = await buildHermit(h, prevByName.get(h.name));
-    console.log(`✓ ${h.name.padEnd(18)} @${r.handle} ${r.channelId}  ${r.videos.length} videos (feed ${r.feedEntries}, shorts ${r.shortsSkipped})  [${r.diag}]`);
+  const attempt = async (ch) => {
+    const r = await buildHermit(ch, prevById.get(ch.channelId));
     delete r.diag;
+    delete r.source;
     return r;
   };
-  const results = await pool(hermits, 3, async (h) => {
-    const prev = prevByName.get(h.name);
+  const results = await pool(jobs, 6, async ({ cat, ch }) => {
+    const prev = prevById.get(ch.channelId);
     try {
-      return await attempt(h);
+      return await attempt(ch);
     } catch (first) {
-      // One slower retry, after the rest of the pool has had a go.
-      await sleep(4000);
+      await sleep(3000);
       try {
-        return await attempt(h);
+        return await attempt(ch);
       } catch {}
-      const e = first;
       failures++;
-      console.warn(`✗ ${h.name.padEnd(18)} ${e.message}${prev ? "  (kept previous data)" : ""}`);
-      return prev ? { ...prev, stale: true } : { name: h.name, handle: h.handles[0], channelUrl: channelPageUrl(h.handles[0]), videos: [], error: true };
+      console.warn(`✗ [${cat}] ${ch.name}: ${first.message}${prev ? "  (kept previous data)" : ""}`);
+      return prev
+        ? { ...prev, name: ch.name, stale: true }
+        : { name: ch.name, handle: ch.handles[0], channelId: ch.channelId, channelUrl: channelPageUrl(ch.handles[0]), videos: [], error: true };
     }
   });
 
-  await mkdir(path.join(ROOT, "site"), { recursive: true });
-  const data = { generatedAt: new Date().toISOString(), hermits: results };
-  await writeFile(path.join(ROOT, "site", "data.json"), JSON.stringify(data, null, 2));
-  console.log(`\nWrote site/data.json — ${results.length - failures}/${results.length} Hermits refreshed.`);
+  const generatedAt = new Date().toISOString();
+  await mkdir(DATA_DIR, { recursive: true });
+  const index = { generatedAt, categories: [], fresh: [] };
+  let i = 0;
+  for (const cat of categories) {
+    const channels = results.slice(i, i + cat.channels.length);
+    i += cat.channels.length;
+    await writeFile(path.join(DATA_DIR, `${cat.id}.json`), JSON.stringify({ generatedAt, id: cat.id, name: cat.name, accent: cat.accent, channels }));
+    const vids = channels
+      .flatMap((c) => (c.videos || []).map((v) => ({ ...v, channel: c.name, avatar: c.avatar || null, category: cat.id })))
+      .sort((a, b) => new Date(b.published) - new Date(a.published));
+    index.categories.push({ id: cat.id, name: cat.name, accent: cat.accent, count: channels.length, latest: vids.slice(0, 4) });
+    index.fresh.push(...vids.slice(0, 12));
+    const bad = channels.filter((c) => c.error || c.stale).length;
+    console.log(`${bad ? "!" : "✓"} ${cat.name.padEnd(24)} ${channels.length - bad}/${channels.length} channels refreshed`);
+  }
+  index.fresh.sort((a, b) => new Date(b.published) - new Date(a.published));
+  index.fresh = index.fresh.slice(0, 16);
+  await writeFile(path.join(DATA_DIR, "index.json"), JSON.stringify(index));
+  console.log(`\nWrote site/data/ — ${results.length - failures}/${results.length} channels refreshed.`);
 
   // Fail the build only if nothing at all came back (e.g. YouTube blocked the runner),
   // so a partial outage still deploys whatever did refresh.
