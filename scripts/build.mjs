@@ -232,7 +232,7 @@ const UNIT_SECONDS = { second: 1, minute: 60, hour: 3600, day: 86400, week: 6048
 export function parsePlaylistPage(html, now = Date.now()) {
   const out = [];
   const ago = (chunk) => {
-    const rel = chunk.slice(0, 8000).match(/"(?:text|content)":"[^"]*?(\d+) (second|minute|hour|day|week|month|year)s? ago"/);
+    const rel = chunk.match(/"(?:text|content)":"[^"]*?(\d+) (second|minute|hour|day|week|month|year)s? ago"/);
     return rel ? new Date(now - Number(rel[1]) * UNIT_SECONDS[rel[2]] * 1000).toISOString() : null;
   };
   const unq = (t) => { try { return JSON.parse(`"${t}"`); } catch { return t; } };
@@ -244,7 +244,7 @@ export function parsePlaylistPage(html, now = Date.now()) {
   }
   // Newer page layout
   for (const chunk of html.split('"lockupViewModel":').slice(1)) {
-    const id = chunk.slice(0, 3000).match(/"contentId":"([\w-]{11})"/)?.[1];
+    const id = chunk.match(/"contentId":"([\w-]{11})"/)?.[1];
     const title = chunk.match(/"title":\{"content":"((?:[^"\\]|\\.)*)"/)?.[1];
     if (id && title && !out.some((e) => e.id === id)) out.push({ id, title: unq(title), published: ago(chunk), approx: true });
   }
@@ -273,6 +273,7 @@ async function filteredVideos(channelId, entries, previous, filter, toVideo, sho
     }
   } catch {}
   for (const e of entries) if (match(e.title)) found.set(e.id, toVideo(e, false));
+  if (![...found.values()].length) console.log(`  [${filter}] ${channelId} recent titles: ${entries.slice(0, 6).map((e) => e.title).join(" | ")}`);
   console.log(`  [${filter}] ${channelId} ${previous?.name || ""}: feed ${entries.filter((e) => match(e.title)).length}/${entries.length} matching, ${listed}, ${found.size} kept`);
   const videos = [];
   for (const v of found.values()) if (INCLUDE_SHORTS || !(await shortCheck(v.id))) videos.push(v);
