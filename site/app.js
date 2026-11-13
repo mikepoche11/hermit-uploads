@@ -41,15 +41,15 @@
     return link(v, "fresh-card", `${thumb(v, i < 4)}<div class="who">${avatar(v.channel, v.avatar)}<span>${esc(v.channel)} · ${ago(v.published)}</span></div><h3>${esc(v.title)}</h3>${cat ? `<span class="tag" style="--c:${esc(cat.accent)}">${esc(cat.name)}</span>` : ""}`);
   }
 
-  function channelCard(c) {
+  function channelCard(c, filter) {
     const [first, ...rest] = c.videos || [];
     const body = first
       ? link(first, "feature", `${thumb(first)}<h4>${esc(first.title)}</h4><div class="vmeta">${[ago(first.published), views(first.views)].filter(Boolean).join(" · ")}</div>`) +
         (rest.length ? `<div class="minor">${rest.map((v) => link(v, "", `${thumb(v)}<h4>${esc(v.title)}</h4><div class="vmeta">${ago(v.published)}</div>`)).join("")}</div>` : "")
-      : `<p class="note">No videos to show right now. They'll appear after the next refresh.</p>`;
+      : `<p class="note">${filter ? `No “${esc(filter)}” videos yet.` : "No videos to show right now. They'll appear after the next refresh."}</p>`;
     return `<article class="card">
       <div class="card-head">${avatar(c.name, c.avatar)}
-        <div class="meta"><h3>${esc(c.name)}</h3><div class="when">${first ? "Last upload " + ago(first.published) : "&nbsp;"}</div></div>
+        <div class="meta"><h3>${esc(c.name)}</h3><div class="when">${first ? (filter ? "Latest episode " : "Last upload ") + ago(first.published) : "&nbsp;"}</div></div>
         <a class="chan" href="${esc(c.channelUrl)}" target="_blank" rel="noopener" aria-label="${esc(c.name)} on YouTube">Channel ↗</a>
       </div>${body}</article>`;
   }
@@ -126,7 +126,7 @@
       .sort((a, b) => new Date(b.published) - new Date(a.published)).slice(0, 10);
     view.innerHTML = `
       <section class="intro cat-intro">
-        <div><h1>${esc(meta.name)}</h1><p class="muted">${data.channels.length} channels · updated ${ago(data.generatedAt)}</p></div>
+        <div><h1>${esc(meta.name)}</h1><p class="muted">${data.channels.length} channels${data.titleFilter ? ` · only videos with “${esc(data.titleFilter)}” in the title` : ""} · updated ${ago(data.generatedAt)}</p></div>
         <div class="controls">
           <label class="search">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -153,7 +153,7 @@
       const list = data.channels
         .filter((c) => !term || c.name.toLowerCase().includes(term))
         .sort(sort === "az" ? (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) : (a, b) => latest(b) - latest(a));
-      $("#grid").innerHTML = list.map(channelCard).join("");
+      $("#grid").innerHTML = list.map((c) => channelCard(c, data.titleFilter)).join("");
       $("#empty").hidden = list.length > 0;
       $("#count").textContent = term ? `${list.length} of ${data.channels.length}` : "";
     };

@@ -15,6 +15,10 @@ Browsers can't read YouTube's RSS feeds directly (no CORS), which is why the fet
 
 Add `{"name": "Channel name", "channelId": "UC..."}` to a category's `channels`. The channel ID is in the channel's URL (`youtube.com/channel/UC...`) or in a Google Takeout `subscriptions.csv`. If you only know a handle, use `{"name": "...", "handles": ["handle"]}` and the build finds the channel (a legacy link like `youtube.com/somename` goes in as `"/somename"`).
 
+## Title-filtered categories
+
+A category with `"titleFilter": "Final Life"` only shows videos whose title contains that text (any case). Because the feed only holds each channel's 15 newest uploads, the build keeps matches from earlier runs and backfills from the channel's uploads playlist page; those backfilled dates are approximate until the video appears in the feed. `"temporary": true` is just a reminder; to retire such a category, delete its block from `categories.json`.
+
 ## Running locally
 
 ```bash

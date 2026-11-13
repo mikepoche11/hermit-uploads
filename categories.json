@@ -26,6 +26,23 @@
     {"name": "Zedaph", "channelId": "UCPK5G4jeoVEbUp5crKJl6CQ", "handles": ["Zedaph"]},
     {"name": "ZombieCleo", "channelId": "UCjI5qxhtyv3srhWr60HemRw", "handles": ["ZombieCleo"]}
   ]},
+  {"id": "life-series", "name": "Life Series", "accent": "#d23c3c", "titleFilter": "Final Life", "temporary": true, "channels": [
+    {"name": "BdoubleO100", "channelId": "UClu2e7S8atp6tG2galK9hgg", "handles": ["bdoubleo"]},
+    {"name": "Bigbst4tz2", "handles": ["Bigbst4tz2"]},
+    {"name": "Grian", "channelId": "UCR9Gcq0CMm6YgTzsDxAxjOQ", "handles": ["Grian"]},
+    {"name": "GoodTimesWithScar", "channelId": "UCodkNmk9oWRTIYZdr_HuSlg", "handles": ["GoodTimesWithScar"]},
+    {"name": "impulseSV", "channelId": "UCuMJPFqazQI4SofSFEd-5zA", "handles": ["impulseSV"]},
+    {"name": "InTheLittleWood", "channelId": "UCTSu4x8ahsJ16T9fWiwlKdg"},
+    {"name": "MumboJumbo", "channelId": "UChFur_NwVSbUozOcF_F2kMg", "handles": ["ThatMumboJumbo"]},
+    {"name": "PearlescentMoon", "channelId": "UC1GJ5aeqpEWklMBQ3oXrPQQ", "handles": ["PearlescentMoon"]},
+    {"name": "Rendog", "channelId": "UCDpdtiUfcdUCzokpRWORRqA", "handles": ["Rendog"]},
+    {"name": "Skizzleman", "channelId": "UCYdXHOv7srjm-ZsNsTcwbBw", "handles": ["/mcskizzleman"]},
+    {"name": "Smajor1995", "handles": ["Smajor1995"]},
+    {"name": "SmallishBeans", "channelId": "UC4qdHN4zHhd4VvNy3zNgXPA", "handles": ["SmallishBeans"]},
+    {"name": "Solidarity", "channelId": "UC6XAct-Bus4x3mYz3VC_HUw"},
+    {"name": "ZombieCleo", "channelId": "UCjI5qxhtyv3srhWr60HemRw", "handles": ["ZombieCleo"]},
+    {"name": "GeminiTay", "channelId": "UCUBsjvdHcwZd3ztdY1Zadcw", "handles": ["GeminiTayMC"]}
+  ]},
   {"id": "hermitcraft-extras", "name": "Hermitcraft Extras", "accent": "#3f8f6b", "channels": [
     {"name": "GeminiTwo", "channelId": "UCyXsGEVtsqMzpCl9KmctYnw"},
     {"name": "GoodClipsWithScar", "channelId": "UCrmsyulCK0py5o94jcJTsFg"},

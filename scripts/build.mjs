@@ -155,7 +155,7 @@ async function isShort(videoId) {
   }
 }
 
-async function buildHermit(hermit, previous) {
+async function buildHermit(hermit, previous, filter) {
   const diag = [];
   let best = null;
   for await (const c of channelCandidates(hermit, previous, diag)) {
@@ -197,6 +197,7 @@ async function buildHermit(hermit, previous) {
   const knownShorts = new Set(previous?.shortIds || []);
   const knownLong = new Set((previous?.videos || []).filter((v) => !v.short).map((v) => v.id));
   const shortCheck = async (id) => (knownShorts.has(id) ? true : knownLong.has(id) ? false : isShort(id));
+  if (filter) return { ...base, ...(await filteredVideos(ch.id, entries, previous, filter, toVideo, shortCheck)) };
   const videos = [];
   const shorts = [];
   for (const e of entries) {
@@ -218,6 +219,62 @@ async function buildHermit(hermit, previous) {
   base.shortsSkipped = shorts.length;
   base.shortIds = shorts.map((e) => e.id);
   return { ...base, videos };
+}
+
+// --- Title-filtered categories (e.g. a Life Series season: only "Final Life" videos) ---
+// The RSS feed only holds a channel's 15 newest uploads, so matches are kept from run to
+// run (via the last deploy's data) and backfilled from the channel's uploads playlist page,
+// which lists about 100 videos. Playlist dates are relative ("2 weeks ago"), so those are
+// approximate until the video shows up in the feed with its exact date.
+const UNIT_SECONDS = { second: 1, minute: 60, hour: 3600, day: 86400, week: 604800, month: 2592000, year: 31536000 };
+
+export function parsePlaylistPage(html, now = Date.now()) {
+  const out = [];
+  const ago = (chunk) => {
+    const rel = chunk.slice(0, 8000).match(/"(?:text|content)":"[^"]*?(\d+) (second|minute|hour|day|week|month|year)s? ago"/);
+    return rel ? new Date(now - Number(rel[1]) * UNIT_SECONDS[rel[2]] * 1000).toISOString() : null;
+  };
+  const unq = (t) => { try { return JSON.parse(`"${t}"`); } catch { return t; } };
+  // Older page layout
+  for (const chunk of html.split('"playlistVideoRenderer":').slice(1)) {
+    const id = chunk.match(/^\{"videoId":"([\w-]{11})"/)?.[1];
+    const title = chunk.match(/"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/)?.[1];
+    if (id && title) out.push({ id, title: unq(title), published: ago(chunk), approx: true });
+  }
+  // Newer page layout
+  for (const chunk of html.split('"lockupViewModel":').slice(1)) {
+    const id = chunk.slice(0, 3000).match(/"contentId":"([\w-]{11})"/)?.[1];
+    const title = chunk.match(/"title":\{"content":"((?:[^"\\]|\\.)*)"/)?.[1];
+    if (id && title && !out.some((e) => e.id === id)) out.push({ id, title: unq(title), published: ago(chunk), approx: true });
+  }
+  return out;
+}
+
+async function filteredVideos(channelId, entries, previous, filter, toVideo, shortCheck) {
+  const needle = filter.toLowerCase();
+  const match = (t = "") => t.toLowerCase().includes(needle);
+  const found = new Map();
+  for (const v of previous?.videos || []) if (match(v.title)) found.set(v.id, v);
+  let listed = "playlist failed";
+  try {
+    const res = await get(`https://www.youtube.com/playlist?list=UU${channelId.slice(2)}`, { tries: 2 });
+    if (res.ok) {
+      const page = parsePlaylistPage(await res.text());
+      listed = `playlist ${page.length} videos, ${page.filter((e) => match(e.title)).length} matching`;
+      for (const e of page) {
+        if (!match(e.title) || !e.published) continue;
+        const old = found.get(e.id);
+        if (!old) found.set(e.id, { ...toVideo({ ...e, views: null }, false), approx: true });
+        else if (old.title !== e.title) found.set(e.id, { ...old, title: e.title });
+      }
+    }
+  } catch {}
+  for (const e of entries) if (match(e.title)) found.set(e.id, toVideo(e, false));
+  console.log(`  [${filter}] ${channelId}: feed ${entries.filter((e) => match(e.title)).length}/${entries.length} matching, ${listed}, ${found.size} kept`);
+  const videos = [];
+  for (const v of found.values()) if (INCLUDE_SHORTS || !(await shortCheck(v.id))) videos.push(v);
+  videos.sort((a, b) => new Date(b.published) - new Date(a.published));
+  return { videos: videos.slice(0, 40), feedEntries: entries.length, shortsSkipped: found.size - videos.length, shortIds: previous?.shortIds || [] };
 }
 
 async function pool(items, limit, fn) {
@@ -249,6 +306,8 @@ async function loadJson(url, file) {
 }
 
 const DATA_DIR = path.join(ROOT, "site", "data");
+// A channel in a title-filtered category keeps its own cache, separate from its normal one.
+const prevKey = (channelId, filter) => (filter ? `${filter}|${channelId}` : channelId);
 
 export async function main() {
   const categories = JSON.parse(await readFile(path.join(ROOT, "categories.json"), "utf8"));
@@ -258,31 +317,32 @@ export async function main() {
   const prevById = new Map();
   await pool(categories, 6, async (cat) => {
     const prev = await loadJson(process.env.PREVIOUS_BASE_URL ? `${base}data/${cat.id}.json` : null, path.join(DATA_DIR, `${cat.id}.json`));
-    for (const ch of prev?.channels || []) if (ch.channelId) prevById.set(ch.channelId, ch);
+    for (const ch of prev?.channels || []) if (ch.channelId) prevById.set(prevKey(ch.channelId, cat.titleFilter), ch);
   });
 
   const jobs = categories.flatMap((cat) =>
     cat.channels.map((ch) => ({
       cat: cat.id,
+      filter: cat.titleFilter || null,
       ch: ch.handles?.length ? ch : { ...ch, handles: [`/channel/${ch.channelId}`], pinnedOnly: true },
     })),
   );
 
   let failures = 0;
-  const attempt = async (ch) => {
-    const r = await buildHermit(ch, prevById.get(ch.channelId));
+  const attempt = async (ch, filter) => {
+    const r = await buildHermit(ch, prevById.get(prevKey(ch.channelId, filter)), filter);
     delete r.diag;
     delete r.source;
     return r;
   };
-  const results = await pool(jobs, 6, async ({ cat, ch }) => {
-    const prev = prevById.get(ch.channelId);
+  const results = await pool(jobs, 6, async ({ cat, ch, filter }) => {
+    const prev = prevById.get(prevKey(ch.channelId, filter));
     try {
-      return await attempt(ch);
+      return await attempt(ch, filter);
     } catch (first) {
       await sleep(3000);
       try {
-        return await attempt(ch);
+        return await attempt(ch, filter);
       } catch {}
       failures++;
       console.warn(`✗ [${cat}] ${ch.name}: ${first.message}${prev ? "  (kept previous data)" : ""}`);
@@ -299,15 +359,18 @@ export async function main() {
   for (const cat of categories) {
     const channels = results.slice(i, i + cat.channels.length);
     i += cat.channels.length;
-    await writeFile(path.join(DATA_DIR, `${cat.id}.json`), JSON.stringify({ generatedAt, id: cat.id, name: cat.name, accent: cat.accent, channels }));
+    await writeFile(path.join(DATA_DIR, `${cat.id}.json`), JSON.stringify({ generatedAt, id: cat.id, name: cat.name, accent: cat.accent, titleFilter: cat.titleFilter || null, channels }));
     const vids = channels
       .flatMap((c) => (c.videos || []).map((v) => ({ ...v, channel: c.name, avatar: c.avatar || null, category: cat.id })))
       .sort((a, b) => new Date(b.published) - new Date(a.published));
-    index.categories.push({ id: cat.id, name: cat.name, accent: cat.accent, count: channels.length, latest: vids.slice(0, 4) });
+    index.categories.push({ id: cat.id, name: cat.name, accent: cat.accent, titleFilter: cat.titleFilter || null, count: channels.length, latest: vids.slice(0, 4) });
     index.fresh.push(...vids.slice(0, 12));
     const bad = channels.filter((c) => c.error || c.stale).length;
     console.log(`${bad ? "!" : "✓"} ${cat.name.padEnd(24)} ${channels.length - bad}/${channels.length} channels refreshed`);
   }
+  // A video can sit in two categories (a Hermit's Life Series episode); list it once.
+  const seenFresh = new Set();
+  index.fresh = index.fresh.filter((v) => !seenFresh.has(v.id) && seenFresh.add(v.id));
   index.fresh.sort((a, b) => new Date(b.published) - new Date(a.published));
   index.fresh = index.fresh.slice(0, 16);
   await writeFile(path.join(DATA_DIR, "index.json"), JSON.stringify(index));
