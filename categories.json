@@ -28,7 +28,7 @@
   ]},
   {"id": "life-series", "name": "Life Series", "accent": "#d23c3c", "titleFilter": "Final Life", "temporary": true, "channels": [
     {"name": "BdoubleO100", "channelId": "UClu2e7S8atp6tG2galK9hgg", "handles": ["bdoubleo"]},
-    {"name": "Bigbst4tz2", "handles": ["Bigbst4tz2"]},
+    {"name": "Bigbst4tz2", "channelId": "UC_msGd9XFp8kggtOQu6uARg"},
     {"name": "Grian", "channelId": "UCR9Gcq0CMm6YgTzsDxAxjOQ", "handles": ["Grian"]},
     {"name": "GoodTimesWithScar", "channelId": "UCodkNmk9oWRTIYZdr_HuSlg", "handles": ["GoodTimesWithScar"]},
     {"name": "impulseSV", "channelId": "UCuMJPFqazQI4SofSFEd-5zA", "handles": ["impulseSV"]},

@@ -162,9 +162,9 @@ async function buildHermit(hermit, previous, filter) {
     try {
       const res = await get(`https://www.youtube.com/feeds/videos.xml?channel_id=${c.id}`);
       if (!res.ok) { diag.push(`feed ${c.id}:${res.status}`); continue; }
-      const { entries } = parseFeed(await res.text());
+      const { entries, channelTitle: parseFeedTitle } = parseFeed(await res.text());
       diag.push(`${c.source}→${c.id}:${entries.length}`);
-      if (!best || entries.length > best.entries.length) best = { ch: c, entries };
+      if (!best || entries.length > best.entries.length) best = { ch: c, entries, title: parseFeedTitle };
       // A real Hermit channel has a full feed; a near-empty one is usually the wrong channel.
       if (entries.length >= 3) break;
     } catch (e) {
@@ -173,6 +173,7 @@ async function buildHermit(hermit, previous, filter) {
   }
   if (!best || !best.entries.length) throw new Error(`no videos found [${diag.join(" ")}]`);
   const { ch, entries } = best;
+  if (filter) diag.push(`feed title "${best.title}"`);
   const base = {
     name: hermit.name,
     handle: ch.handle,
@@ -259,8 +260,10 @@ async function filteredVideos(channelId, entries, previous, filter, toVideo, sho
   try {
     const res = await get(`https://www.youtube.com/playlist?list=UU${channelId.slice(2)}`, { tries: 2 });
     if (res.ok) {
-      const page = parsePlaylistPage(await res.text());
+      const html = await res.text();
+      const page = parsePlaylistPage(html);
       listed = `playlist ${page.length} videos, ${page.filter((e) => match(e.title)).length} matching`;
+      if (!page.length) listed += ` (page ${html.length}b, ${(html.match(/"videoId":"/g) || []).length} videoIds, keys: ${[...new Set(html.match(/"[a-zA-Z]+(?:Renderer|ViewModel)":/g) || [])].slice(0, 12).join(" ")})`;
       for (const e of page) {
         if (!match(e.title) || !e.published) continue;
         const old = found.get(e.id);
@@ -270,7 +273,7 @@ async function filteredVideos(channelId, entries, previous, filter, toVideo, sho
     }
   } catch {}
   for (const e of entries) if (match(e.title)) found.set(e.id, toVideo(e, false));
-  console.log(`  [${filter}] ${channelId}: feed ${entries.filter((e) => match(e.title)).length}/${entries.length} matching, ${listed}, ${found.size} kept`);
+  console.log(`  [${filter}] ${channelId} ${previous?.name || ""}: feed ${entries.filter((e) => match(e.title)).length}/${entries.length} matching, ${listed}, ${found.size} kept`);
   const videos = [];
   for (const v of found.values()) if (INCLUDE_SHORTS || !(await shortCheck(v.id))) videos.push(v);
   videos.sort((a, b) => new Date(b.published) - new Date(a.published));
@@ -331,6 +334,7 @@ export async function main() {
   let failures = 0;
   const attempt = async (ch, filter) => {
     const r = await buildHermit(ch, prevById.get(prevKey(ch.channelId, filter)), filter);
+    if (filter) console.log(`  [${filter}] ${ch.name} → ${r.channelId}: ${r.diag}`);
     delete r.diag;
     delete r.source;
     return r;
