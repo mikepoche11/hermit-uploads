@@ -19,25 +19,33 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      # "true" when YouTube's feeds were down: nothing to deploy, live site stays as is
+      skip_deploy: ${{ steps.fetch.outputs.skip_deploy }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 22
       - name: Fetch latest videos
+        id: fetch
         env:
           # Last deploy: fallback for failed feeds, plus cached avatars and Shorts checks
           PREVIOUS_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
         run: node scripts/build.mjs
       - name: Make browsers load the new styles and script after each change
+        if: steps.fetch.outputs.skip_deploy != 'true'
         run: sed -i -E "s/(app\.js|style\.css)\"/\1?v=${GITHUB_SHA::7}\"/g" site/index.html && grep -E 'app\.js|style\.css' site/index.html
       - uses: actions/configure-pages@v5
+        if: steps.fetch.outputs.skip_deploy != 'true'
       - uses: actions/upload-pages-artifact@v3
+        if: steps.fetch.outputs.skip_deploy != 'true'
         with:
           path: site
 
   deploy:
     needs: build
+    if: needs.build.outputs.skip_deploy != 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

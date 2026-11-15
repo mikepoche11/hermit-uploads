@@ -13,7 +13,7 @@
 //                       fallback for any channel whose feed fails this run, and a
 //                       cache for avatars and Shorts checks
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, appendFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -333,6 +333,12 @@ export async function main() {
   );
 
   let failures = 0;
+  let successes = 0;
+  // If the first batch of channels all fail, YouTube's feeds are down for everyone
+  // (it happens for a few hours now and then). Stop fetching instead of spending
+  // ~17 minutes retrying every channel.
+  const OUTAGE_AFTER = 30;
+  let outage = false;
   const attempt = async (ch, filter) => {
     const r = await buildHermit(ch, prevById.get(prevKey(ch.channelId, filter)), filter);
     if (filter) console.log(`  [${filter}] ${ch.name} → ${r.channelId}: ${r.diag}`);
@@ -342,20 +348,40 @@ export async function main() {
   };
   const results = await pool(jobs, 6, async ({ cat, ch, filter }) => {
     const prev = prevById.get(prevKey(ch.channelId, filter));
+    if (outage) {
+      failures++;
+      return prev
+        ? { ...prev, name: ch.name, stale: true }
+        : { name: ch.name, handle: ch.handles[0], channelId: ch.channelId, channelUrl: channelPageUrl(ch.handles[0]), videos: [], error: true };
+    }
     try {
-      return await attempt(ch, filter);
+      const r = await attempt(ch, filter);
+      successes++;
+      return r;
     } catch (first) {
       await sleep(3000);
       try {
-        return await attempt(ch, filter);
+        const r = await attempt(ch, filter);
+        successes++;
+        return r;
       } catch {}
       failures++;
+      if (!successes && failures >= OUTAGE_AFTER) outage = true;
       console.warn(`✗ [${cat}] ${ch.name}: ${first.message}${prev ? "  (kept previous data)" : ""}`);
       return prev
         ? { ...prev, name: ch.name, stale: true }
         : { name: ch.name, handle: ch.handles[0], channelId: ch.channelId, channelUrl: channelPageUrl(ch.handles[0]), videos: [], error: true };
     }
   });
+
+  // Nothing came back: YouTube's feeds are down (or the runner is blocked). Keep the
+  // live site as it is and tell the workflow to skip the deploy, without failing
+  // the run, so no "Run failed" email goes out. The next hourly run tries again.
+  if (!successes) {
+    console.log(`\n::warning::No YouTube feeds responded (${failures}/${results.length} channels failed). Skipping this deploy; the live site keeps its last data.`);
+    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, "skip_deploy=true\n");
+    return;
+  }
 
   const generatedAt = new Date().toISOString();
   await mkdir(DATA_DIR, { recursive: true });
@@ -381,9 +407,6 @@ export async function main() {
   await writeFile(path.join(DATA_DIR, "index.json"), JSON.stringify(index));
   console.log(`\nWrote site/data/ — ${results.length - failures}/${results.length} channels refreshed.`);
 
-  // Fail the build only if nothing at all came back (e.g. YouTube blocked the runner),
-  // so a partial outage still deploys whatever did refresh.
-  if (failures === results.length) process.exit(1);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
